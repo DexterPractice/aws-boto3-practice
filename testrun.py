@@ -1,29 +1,26 @@
 import boto3
-from datetime import datetime
-
 
 session = boto3.Session(profile_name='default')
 
+account_id = boto3.client('sts').get_caller_identity().get('Account')
+ec2 = boto3.client('ec2')
 
-ec2_client = boto3.client('ec2')
 regions = [region['RegionName']
-              for region in ec2_client.describe_regions()['Regions']]
+        for region in ec2.describe_regions()['Regions']]
 
 for region in regions:
-    print('Instances in EC2 Region {0}:'.format(region))
-    ec2 = boto3.resource('ec2', region_name=region)
-    instances = ec2.instances.filter(
-            Filters=[
-                {'Name': 'tag:backup', 'Values': ['true']}
-            ]
-        )
+    print("Region:", region)
+    ec2 = boto3.client('ec2', region_name=region)
+    response = ec2.describe_snapshots(OwnerIds=[account_id])
+    snapshots = response["Snapshots"]
+    snapshots.sort(key=lambda x: x["StartTime"])
+    snapshots = snapshots[:-1]
 
-    timestamp = datetime.utcnow().replace(microsecond=0).isoformat()
-
-    for instance in instances.all():
-        for volume in instance.volumes.all():
-            desc = 'Backup of {0}, volume {1}, created {2}'.format(
-                    instance.id, volume.id, timestamp)
-            print(desc)
-            snapshot = volume.create_snapshot(Description=desc)
-            print("Created snapshot:", snapshot.id)
+    for snapshot in snapshots:
+            id = snapshot['SnapshotId']
+            try:
+                print("Deleting snapshot:", id)
+                ec2.delete_snapshot(SnapshotId=id)
+            except Exception as e:
+                print("Snapshot {} in use, skipping.".format(id))
+                continue
