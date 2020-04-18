@@ -13,5 +13,10 @@ def lambda_handler(object, context):
         print("Region:", region)
 
         # List only unattached volumes ('available' vs. 'in-use')
-        volumes = ec2.volumes.all()
-        print(volumes)
+        volumes = ec2.volumes.filter(
+            Filters=[{'Name': 'status', 'Values': ['available']}])
+
+        for volume in volumes:
+            v = ec2.Volume(volume.id)
+            print("Deleting EBS volume: {}, Size: {} GiB".format(v.id, v.size))
+            v.delete()
